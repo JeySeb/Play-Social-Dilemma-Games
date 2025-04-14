@@ -8,6 +8,11 @@ import cv2
 import threading
 import queue
 import time
+import keyboard
+import pyaudio
+import wave
+import io
+import os
 
 class DataSubscriber:
     def __init__(self, broker_address, data_topic, data_queue, gui, port):
@@ -59,6 +64,112 @@ class ActionPublisher:
         action_json = json.dumps(action_dict)
         self.client.publish(self.actions_topic, action_json)
 
+class AudioPublisher:
+    def __init__(self, broker_address, agent_id, port):
+        self.broker_address = broker_address
+        self.agent_id = agent_id
+        self.port = port
+        self.recording = False
+        self.audio_thread = None
+        self.frames = []
+        self.message_kind = None
+        
+        # Audio settings
+        self.format = pyaudio.paInt16
+        self.channels = 1
+        self.rate = 44100
+        self.chunk = 1024
+        
+        # MQTT client setup
+        self.client = mqtt.Client()
+        print(f"Audio publisher trying to connect to {self.broker_address} on port {self.port}")
+        self.client.connect(self.broker_address, self.port, 60)
+        self.client.loop_start()
+        
+        # Initialize PyAudio
+        self.audio = pyaudio.PyAudio()
+    
+    def start_recording(self, message_kind):
+        if self.recording:
+            return
+            
+        self.message_kind = message_kind
+        self.recording = True
+        self.frames = []
+        self.audio_thread = threading.Thread(target=self._record_audio)
+        self.audio_thread.daemon = True
+        self.audio_thread.start()
+        print(f"Started recording audio for message kind: {message_kind}")
+    
+    def stop_recording(self):
+        if not self.recording:
+            return
+            
+        self.recording = False
+        if self.audio_thread:
+            self.audio_thread.join(timeout=1.0)
+        
+        # Send the recorded audio
+        if self.frames and self.message_kind:
+            self._send_audio()
+            print(f"Agent {self.agent_id} sent to the topic topic/audio audio for message kind: {self.message_kind}")
+    
+    def _record_audio(self):
+        stream = self.audio.open(
+            format=self.format,
+            channels=self.channels,
+            rate=self.rate,
+            input=True,
+            frames_per_buffer=self.chunk
+        )
+        
+        while self.recording:
+            data = stream.read(self.chunk)
+            self.frames.append(data)
+        
+        stream.stop_stream()
+        stream.close()
+    
+    def _send_audio(self):
+        # Convert frames to WAV format in memory
+        buffer = io.BytesIO()
+        wf = wave.open(buffer, 'wb')
+        wf.setnchannels(self.channels)
+        wf.setsampwidth(self.audio.get_sample_size(self.format))
+        wf.setframerate(self.rate)
+        wf.writeframes(b''.join(self.frames))
+        wf.close()
+        
+        # Get the WAV data and encode it as base64
+        buffer.seek(0)
+        audio_data = buffer.read()
+        audio_base64 = base64.b64encode(audio_data).decode('utf-8')
+        
+        # Create a dictionary with the required keys
+        audio_dict = {
+            "audio": audio_base64,
+            "agent_id": self.agent_id,
+            "message_kind": self.message_kind
+        }
+        
+        # Convert the dictionary to JSON
+        audio_json = json.dumps(audio_dict)
+        
+        # Create the topic
+        topic = f"topic/audio"
+        
+        # Publish the audio data as JSON
+        self.client.publish(topic, audio_json)
+        
+        # Clear frames
+        self.frames = []
+    
+    def cleanup(self):
+        self.stop_recording()
+        self.audio.terminate()
+        self.client.loop_stop()
+        self.client.disconnect()
+
 class PlayerGUI:
     def __init__(self, root, data_queue, action_publisher, agent_id, show_only_self=True):
         self.root = root
@@ -69,6 +180,9 @@ class PlayerGUI:
         self.start_time = None
         self.timer_label = None
         self.game_started = False
+        self.mic_status = "muted"  # Track microphone status
+        self.mic_timer = None  # Timer for mic unmute duration
+        self.audio_publisher = None  # Will be set in main()
 
         self.root.configure(bg='#2C2F33')
         self.root.title("Player Interface")
@@ -77,9 +191,16 @@ class PlayerGUI:
         # Crear un contenedor principal
         self.main_container = tk.Frame(self.root, bg='#2C2F33')
         self.main_container.pack(fill=tk.BOTH, expand=True)
+
+        # Crear frames izquierdo (juego) y derecho (info + controles)
+        self.left_game_panel = tk.Frame(self.main_container, bg='#2C2F33', width=750)
+        self.left_game_panel.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+
+        self.right_panel = tk.Frame(self.main_container, bg='#23272A', width=250)
+        self.right_panel.pack(side=tk.RIGHT, fill=tk.BOTH)
         
-        # Create start screen frame dentro del contenedor principal
-        self.start_frame = tk.Frame(self.main_container, bg='#23272A')
+        # Create start screen frame dentro del panel izquierdo
+        self.start_frame = tk.Frame(self.left_game_panel, bg='#23272A')
         self.start_frame.pack(fill=tk.BOTH, expand=True)
         
         # Create start button
@@ -91,8 +212,8 @@ class PlayerGUI:
                                  relief=tk.RAISED, borderwidth=5)
         start_button.pack(expand=True)
 
-        # Create main game frame dentro del contenedor principal pero no lo empaquetes aún
-        self.game_frame = tk.Frame(self.main_container, bg='#2C2F33')
+        # Create main game frame dentro del panel izquierdo pero no lo empaquetes aún
+        self.game_frame = tk.Frame(self.left_game_panel, bg='#2C2F33')
         self.frame = tk.Frame(self.game_frame, bg='#2C2F33')
         self.frame.pack(fill=tk.BOTH, expand=True, padx=10, pady=10)
         
@@ -100,6 +221,24 @@ class PlayerGUI:
         self.timer_label = tk.Label(self.frame, text="Time: 00:00", bg='#2C2F33', fg='white', font=('Arial', 14))
         self.timer_label.pack(anchor='nw', padx=5, pady=5)
 
+        # Panel de información (superior) en panel derecho - ahora ocupa la mitad
+        self.info_panel = tk.Frame(self.right_panel, bg='#99AAB5', height=500)  # Aumentado height
+        self.info_panel.pack(fill=tk.X)
+
+        self.text_scroll = tk.Text(self.info_panel, wrap=tk.NONE, height=20, bg='#99AAB5', fg='black', font=('Arial', 12))  # Aumentado height
+        self.text_scroll.pack(fill=tk.BOTH, expand=True, padx=10, pady=5)
+        self.text_scroll.config(state='disabled')
+
+        # Mic status panel debajo del panel de información
+        self.mic_panel = tk.Frame(self.right_panel, bg='#99AAB5')
+        self.mic_panel.pack(fill=tk.X)
+        
+        self.mic_label = tk.Label(self.mic_panel, image=None, bg='#99AAB5')  # Se configurará después
+        self.mic_label.pack(pady=5)
+
+        # Panel inferior con controles en panel derecho
+        self.controls_panel = tk.Frame(self.right_panel, bg='#2C2F33')
+        self.controls_panel.pack(fill=tk.BOTH, expand=True)
         
         self.labels = []
         self.img_resolution = (1000, 1000)
@@ -107,17 +246,15 @@ class PlayerGUI:
         self.player_names = ["Player 1", "Player 2"]
         self.number_of_players = 1 if show_only_self else 2
 
-        self.text_scroll = None
         self.load_initial_images()
         self.load_communication_images()
-        self.create_bottom_space()
         self.create_control_panel()
         self.bind_keyboard_controls()
         self.able_to_move = False
         self.current_text = ""
         self.check_queue()
         self.update_timer()
-        
+
     def check_server_response(self):
         if self.game_started:
             # Check if "go ahead" is in the text field
@@ -251,6 +388,11 @@ class PlayerGUI:
         self.strategy_collective_img = ImageTk.PhotoImage(Image.open("imgs/strategy_collective.png").resize((30, 30)))
         self.agreement_request_img = ImageTk.PhotoImage(Image.open("imgs/agreement_request.png").resize((30, 30)))
         self.agreement_evaluation_img = ImageTk.PhotoImage(Image.open("imgs/agreement_evaluation.png").resize((30, 30)))
+        self.mic_muted_img = ImageTk.PhotoImage(Image.open("imgs/mic_muted.png").resize((30, 30)))
+        self.mic_unmuted_img = ImageTk.PhotoImage(Image.open("imgs/mic_unmuted.png").resize((30, 30)))
+        
+        # Configure mic label with initial image
+        self.mic_label.configure(image=self.mic_muted_img)
 
     def create_control_panel(self):
         self.control_panel = tk.Frame(self.root, bg='#2C2F33')
@@ -266,11 +408,11 @@ class PlayerGUI:
         movement_frame = tk.Frame(left_controls, bg='#2C2F33')
         movement_frame.pack()
 
-        button_up = tk.Button(movement_frame, image=self.up_img, command=lambda: self.handle_action("up"), bg='#7289DA', borderwidth=3)
-        button_down = tk.Button(movement_frame, image=self.down_img, command=lambda: self.handle_action("down"), bg='#7289DA', borderwidth=3)
-        button_left = tk.Button(movement_frame, image=self.left_img, command=lambda: self.handle_action("left"), bg='#7289DA', borderwidth=3)
-        button_right = tk.Button(movement_frame, image=self.right_img, command=lambda: self.handle_action("right"), bg='#7289DA', borderwidth=3)
-        button_fire = tk.Button(movement_frame, image=self.fire_img, command=lambda: self.handle_action("firezap"), bg='#7289DA', borderwidth=3)
+        button_up = tk.Button(movement_frame, image=self.up_img, command=lambda: self.handle_action("move up"), bg='#7289DA', borderwidth=3)
+        button_down = tk.Button(movement_frame, image=self.down_img, command=lambda: self.handle_action("move down"), bg='#7289DA', borderwidth=3)
+        button_left = tk.Button(movement_frame, image=self.left_img, command=lambda: self.handle_action("move left"), bg='#7289DA', borderwidth=3)
+        button_right = tk.Button(movement_frame, image=self.right_img, command=lambda: self.handle_action("move right"), bg='#7289DA', borderwidth=3)
+        button_fire = tk.Button(movement_frame, image=self.fire_img, command=lambda: self.handle_action("attack"), bg='#7289DA', borderwidth=3)
 
         button_up.grid(row=0, column=1, pady=5)
         button_left.grid(row=1, column=0, padx=5)
@@ -298,23 +440,72 @@ class PlayerGUI:
         env_section = tk.LabelFrame(comms_panel, text="Environment", bg='#7289DA', fg='white', padx=10, pady=10)
         env_section.pack(fill=tk.BOTH, padx=5, pady=5)
 
-        tk.Button(env_section, image=self.informativo_img, command=lambda: self.handle_action("msg-environment-information"), bg='white').pack(side=tk.LEFT, padx=10)
-        tk.Button(env_section, image=self.pregunta_img, command=lambda: self.handle_action("msg-environment-question"), bg='white').pack(side=tk.LEFT, padx=10)
+        tk.Button(env_section, image=self.informativo_img, 
+                 command=lambda: self.handle_comm_action("msg-environment-information"), 
+                 bg='white').pack(side=tk.LEFT, padx=10)
+        tk.Button(env_section, image=self.pregunta_img, 
+                 command=lambda: self.handle_comm_action("msg-environment-question"), 
+                 bg='white').pack(side=tk.LEFT, padx=10)
 
         # Sección Strategy
         strat_section = tk.LabelFrame(comms_panel, text="Strategies Proposal", bg='#99AAB5', fg='black', padx=10, pady=10)
         strat_section.pack(fill=tk.BOTH, padx=5, pady=5)
 
-        tk.Button(strat_section, image=self.strategy_individual_img, command=lambda: self.handle_action("msg-strategy-individual"), bg='white').pack(side=tk.LEFT, padx=10)
-        tk.Button(strat_section, image=self.strategy_collective_img, command=lambda: self.handle_action("msg-strategy-collective"), bg='white').pack(side=tk.LEFT, padx=10)
+        tk.Button(strat_section, image=self.strategy_individual_img, 
+                 command=lambda: self.handle_comm_action("msg-strategy-individual"), 
+                 bg='white').pack(side=tk.LEFT, padx=10)
+        tk.Button(strat_section, image=self.strategy_collective_img, 
+                 command=lambda: self.handle_comm_action("msg-strategy-collective"), 
+                 bg='white').pack(side=tk.LEFT, padx=10)
 
         # Sección Agreements
         agree_section = tk.LabelFrame(comms_panel, text="Agreements Stablishment", bg='#2C2F33', fg='white', padx=10, pady=10)
         agree_section.pack(fill=tk.BOTH, padx=5, pady=5)
 
-        tk.Button(agree_section, image=self.agreement_request_img, command=lambda: self.handle_action("msg-agreement-request"), bg='white').pack(side=tk.LEFT, padx=10)
-        tk.Button(agree_section, image=self.agreement_evaluation_img, command=lambda: self.handle_action("msg-agreement-evaluation"), bg='white').pack(side=tk.LEFT, padx=10)
+        tk.Button(agree_section, image=self.agreement_request_img, 
+                 command=lambda: self.handle_comm_action("msg-agreement-request"), 
+                 bg='white').pack(side=tk.LEFT, padx=10)
+        tk.Button(agree_section, image=self.agreement_evaluation_img, 
+                 command=lambda: self.handle_comm_action("msg-agreement-evaluation"), 
+                 bg='white').pack(side=tk.LEFT, padx=10)
 
+    def handle_comm_action(self, action):
+        # Extract message kind from action (e.g., "msg-environment-information" -> "environment-information")
+        message_kind = action.replace("msg-", "")
+        
+        # Only press alt+a if mic is currently muted
+        if self.mic_status == "muted":
+            keyboard.press_and_release('alt+a')
+            
+            # Start recording audio with the message kind
+            if self.audio_publisher:
+                self.audio_publisher.start_recording(message_kind)
+            
+        # Set mic to unmuted
+        self.mic_status = "unmuted"
+        self.mic_label.configure(image=self.mic_unmuted_img)
+        
+        # Cancel existing timer if any
+        if self.mic_timer:
+            self.root.after_cancel(self.mic_timer)
+            
+        # Start new 10 second timer
+        self.mic_timer = self.root.after(10000, self.mute_mic)
+        
+        # Handle the action
+        self.handle_action(action)
+        
+    def mute_mic(self):
+        self.mic_status = "muted"
+        self.mic_label.configure(image=self.mic_muted_img)
+        self.mic_timer = None
+        
+        # Stop recording audio
+        if self.audio_publisher:
+            self.audio_publisher.stop_recording()
+            
+        # Press and release 'alt+a' to mute the mic in Zoom 
+        keyboard.press_and_release('alt+a')
 
     def bind_keyboard_controls(self):
         self.root.bind('<Left>', lambda event: self.handle_action("move left"))
@@ -325,12 +516,12 @@ class PlayerGUI:
         self.root.bind('z', lambda event: self.handle_action("turn left"))
         self.root.bind('x', lambda event: self.handle_action("turn right"))
         # Communication key bindings
-        self.root.bind('q', lambda event: self.handle_action("msg-environment-information"))
-        self.root.bind('w', lambda event: self.handle_action("msg-environment-question"))
-        self.root.bind('e', lambda event: self.handle_action("msg-strategy-individual"))
-        self.root.bind('r', lambda event: self.handle_action("msg-strategy-collective"))
-        self.root.bind('t', lambda event: self.handle_action("msg-agreement-request"))
-        self.root.bind('y', lambda event: self.handle_action("msg-agreement-evaluation"))
+        self.root.bind('q', lambda event: self.handle_comm_action("msg-environment-information"))
+        self.root.bind('w', lambda event: self.handle_comm_action("msg-environment-question"))
+        self.root.bind('e', lambda event: self.handle_comm_action("msg-strategy-individual"))
+        self.root.bind('r', lambda event: self.handle_comm_action("msg-strategy-collective"))
+        self.root.bind('t', lambda event: self.handle_comm_action("msg-agreement-request"))
+        self.root.bind('y', lambda event: self.handle_comm_action("msg-agreement-evaluation"))
 
     def handle_action(self, action):
         if self.able_to_move and self.game_started:
@@ -464,12 +655,21 @@ def main(port: int, agent_id: str="1"):
     data_queue = queue.Queue()
 
     action_publisher = ActionPublisher(broker_address, actions_topic, port)
+    audio_publisher = AudioPublisher(broker_address, agent_id, port)
 
     root = tk.Tk()
     gui = PlayerGUI(root, data_queue, action_publisher, agent_id)
+    gui.audio_publisher = audio_publisher  # Set the audio publisher
     
     subscriber = DataSubscriber(broker_address, data_topic, data_queue, gui, port)
     
+    # Set up cleanup on window close
+    def on_closing():
+        if gui.audio_publisher:
+            gui.audio_publisher.cleanup()
+        root.destroy()
+    
+    root.protocol("WM_DELETE_WINDOW", on_closing)
     root.mainloop()
 
 if __name__ == "__main__":
