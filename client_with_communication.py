@@ -183,6 +183,7 @@ class PlayerGUI:
         self.mic_status = "muted"  # Track microphone status
         self.mic_timer = None  # Timer for mic unmute duration
         self.audio_publisher = None  # Will be set in main()
+        self.current_message_kind = None  # Track current message kind
 
         self.root.configure(bg='#2C2F33')
         self.root.title("Player Interface")
@@ -233,8 +234,15 @@ class PlayerGUI:
         self.mic_panel = tk.Frame(self.right_panel, bg='#99AAB5')
         self.mic_panel.pack(fill=tk.X)
         
-        self.mic_label = tk.Label(self.mic_panel, image=None, bg='#99AAB5')  # Se configurará después
-        self.mic_label.pack(pady=5)
+        # Create a frame for mic status and message kind
+        self.mic_status_frame = tk.Frame(self.mic_panel, bg='#99AAB5')
+        self.mic_status_frame.pack(pady=5)
+        
+        self.mic_label = tk.Label(self.mic_status_frame, image=None, bg='#99AAB5')
+        self.mic_label.pack(side=tk.LEFT, pady=5)
+        
+        self.message_kind_label = tk.Label(self.mic_status_frame, text="", bg='#99AAB5', fg='black', font=('Arial', 10))
+        self.message_kind_label.pack(side=tk.LEFT, padx=10)
 
         # Panel inferior con controles en panel derecho
         self.controls_panel = tk.Frame(self.right_panel, bg='#2C2F33')
@@ -388,8 +396,8 @@ class PlayerGUI:
         self.strategy_collective_img = ImageTk.PhotoImage(Image.open("imgs/strategy_collective.png").resize((30, 30)))
         self.agreement_request_img = ImageTk.PhotoImage(Image.open("imgs/agreement_request.png").resize((30, 30)))
         self.agreement_evaluation_img = ImageTk.PhotoImage(Image.open("imgs/agreement_evaluation.png").resize((30, 30)))
-        self.mic_muted_img = ImageTk.PhotoImage(Image.open("imgs/mic_muted.png").resize((30, 30)))
-        self.mic_unmuted_img = ImageTk.PhotoImage(Image.open("imgs/mic_unmuted.png").resize((30, 30)))
+        self.mic_muted_img = ImageTk.PhotoImage(Image.open("imgs/mic_muted.png").resize((80, 80)))  # Doubled size
+        self.mic_unmuted_img = ImageTk.PhotoImage(Image.open("imgs/mic_unmuted.png").resize((80, 80)))  # Doubled size
         
         # Configure mic label with initial image
         self.mic_label.configure(image=self.mic_muted_img)
@@ -472,6 +480,10 @@ class PlayerGUI:
     def handle_comm_action(self, action):
         # Extract message kind from action (e.g., "msg-environment-information" -> "environment-information")
         message_kind = action.replace("msg-", "")
+        self.current_message_kind = message_kind
+        
+        # Update message kind label
+        self.message_kind_label.config(text=f"Communicate your message: {message_kind}")
         
         # Only press alt+a if mic is currently muted
         if self.mic_status == "muted":
@@ -499,6 +511,8 @@ class PlayerGUI:
         self.mic_status = "muted"
         self.mic_label.configure(image=self.mic_muted_img)
         self.mic_timer = None
+        self.current_message_kind = None
+        self.message_kind_label.config(text="MUTED")  # Clear message kind label
         
         # Stop recording audio
         if self.audio_publisher:
