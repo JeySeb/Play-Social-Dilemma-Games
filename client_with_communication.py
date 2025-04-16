@@ -396,86 +396,159 @@ class PlayerGUI:
         self.strategy_collective_img = ImageTk.PhotoImage(Image.open("imgs/strategy_collective.png").resize((30, 30)))
         self.agreement_request_img = ImageTk.PhotoImage(Image.open("imgs/agreement_request.png").resize((30, 30)))
         self.agreement_evaluation_img = ImageTk.PhotoImage(Image.open("imgs/agreement_evaluation.png").resize((30, 30)))
-        self.mic_muted_img = ImageTk.PhotoImage(Image.open("imgs/mic_muted.png").resize((80, 80)))  # Doubled size
-        self.mic_unmuted_img = ImageTk.PhotoImage(Image.open("imgs/mic_unmuted.png").resize((80, 80)))  # Doubled size
+        self.mic_muted_img = ImageTk.PhotoImage(Image.open("imgs/mic_muted.png").resize((20, 20)))  # Doubled size
+        self.mic_unmuted_img = ImageTk.PhotoImage(Image.open("imgs/mic_unmuted.png").resize((20, 20)))  # Doubled size
         
         # Configure mic label with initial image
         self.mic_label.configure(image=self.mic_muted_img)
 
     def create_control_panel(self):
         self.control_panel = tk.Frame(self.root, bg='#2C2F33')
-        self.control_panel.pack(fill=tk.X, expand=False, pady=10)
+        self.control_panel.pack(fill=tk.X, expand=True, pady=10)
 
-        # Panel de movimiento y rotación
-        left_controls = tk.Frame(self.control_panel, bg='#2C2F33')
-        left_controls.pack(side=tk.LEFT, padx=10, fill=tk.Y)
+        # Create main container for all controls
+        main_container = tk.Frame(self.control_panel, bg='#2C2F33')
+        main_container.pack(fill=tk.X, expand=True, padx=10)
 
-        movement_label = tk.Label(left_controls, text="Movement & Rotation Controls", bg='#2C2F33', fg='white', font=("Arial", 10, "bold"))
-        movement_label.pack(pady=(0, 10))
+        # Left side - Movement controls
+        movement_frame = tk.Frame(main_container, bg='#2C2F33')
+        movement_frame.pack(side=tk.LEFT, padx=10)
 
-        movement_frame = tk.Frame(left_controls, bg='#2C2F33')
-        movement_frame.pack()
+        movement_label = tk.Label(movement_frame, text="Movement Controls", bg='#2C2F33', fg='white', font=("Arial", 10, "bold"))
+        movement_label.pack(pady=(0, 5))
 
-        button_up = tk.Button(movement_frame, image=self.up_img, command=lambda: self.handle_action("move up"), bg='#7289DA', borderwidth=3)
-        button_down = tk.Button(movement_frame, image=self.down_img, command=lambda: self.handle_action("move down"), bg='#7289DA', borderwidth=3)
-        button_left = tk.Button(movement_frame, image=self.left_img, command=lambda: self.handle_action("move left"), bg='#7289DA', borderwidth=3)
-        button_right = tk.Button(movement_frame, image=self.right_img, command=lambda: self.handle_action("move right"), bg='#7289DA', borderwidth=3)
-        button_fire = tk.Button(movement_frame, image=self.fire_img, command=lambda: self.handle_action("attack"), bg='#7289DA', borderwidth=3)
+        # Create frames for movement controls layout
+        top_frame = tk.Frame(movement_frame, bg='#2C2F33')
+        top_frame.pack()
+        middle_frame = tk.Frame(movement_frame, bg='#2C2F33')
+        middle_frame.pack()
+        bottom_frame = tk.Frame(movement_frame, bg='#2C2F33')
+        bottom_frame.pack()
 
-        button_up.grid(row=0, column=1, pady=5)
-        button_left.grid(row=1, column=0, padx=5)
-        button_fire.grid(row=1, column=1, padx=5, pady=5)
-        button_right.grid(row=1, column=2, padx=5)
-        button_down.grid(row=2, column=1, pady=5)
+        # Movement buttons with key labels
+        button_up = tk.Button(top_frame, image=self.up_img, command=lambda: self.handle_action("move up"), bg='#7289DA', borderwidth=3)
+        button_up.pack(pady=2)
 
-        rotation_frame = tk.Frame(left_controls, bg='#2C2F33')
-        rotation_frame.pack(pady=10)
+        button_left = tk.Button(middle_frame, image=self.left_img, command=lambda: self.handle_action("move left"), bg='#7289DA', borderwidth=3)
+        button_left.pack(side=tk.LEFT, padx=2)
 
-        rotation_label = tk.Label(rotation_frame, text="Rotation", bg='#2C2F33', fg='white')
-        rotation_label.pack()
+        button_fire = tk.Button(middle_frame, image=self.fire_img, command=lambda: self.handle_action("attack"), bg='#7289DA', borderwidth=3)
+        button_fire.pack(side=tk.LEFT, padx=2)
 
-        tk.Button(rotation_frame, image=self.rotate_left_img, command=lambda: self.handle_action("turn left")).pack(side=tk.LEFT, padx=5)
-        tk.Button(rotation_frame, image=self.rotate_right_img, command=lambda: self.handle_action("turn right")).pack(side=tk.RIGHT, padx=5)
+        button_right = tk.Button(middle_frame, image=self.right_img, command=lambda: self.handle_action("move right"), bg='#7289DA', borderwidth=3)
+        button_right.pack(side=tk.LEFT, padx=2)
 
-        # Panel de comunicación
-        comms_panel = tk.Frame(self.control_panel, bg='#99AAB5', bd=2, relief=tk.RIDGE)
-        comms_panel.pack(side=tk.RIGHT, padx=10, fill=tk.BOTH, expand=True)
+        button_down = tk.Button(bottom_frame, image=self.down_img, command=lambda: self.handle_action("move down"), bg='#7289DA', borderwidth=3)
+        button_down.pack(pady=2)
+        #key_label_down = tk.Label(bottom_frame, text="↓", bg='#2C2F33', fg='white')
+        #key_label_down.pack()
+
+        # Right side - Rotation controls
+        rotation_frame = tk.Frame(main_container, bg='#2C2F33')
+        rotation_frame.pack(side=tk.LEFT, padx=10)
+
+        rotation_label = tk.Label(rotation_frame, text="Rotation Controls", bg='#2C2F33', fg='white', font=("Arial", 10, "bold"))
+        rotation_label.pack(pady=(0, 5))
+
+        # Rotation buttons with key labels
+        button_rotate_left = tk.Button(rotation_frame, image=self.rotate_left_img, command=lambda: self.handle_action("turn left"), bg='#7289DA', borderwidth=3)
+        button_rotate_left.pack(side=tk.LEFT, padx=5)
+        key_label_rotate_left = tk.Label(rotation_frame, text="(Z)", bg='#2C2F33', fg='white')
+        key_label_rotate_left.pack(side=tk.LEFT)
+
+        button_rotate_right = tk.Button(rotation_frame, image=self.rotate_right_img, command=lambda: self.handle_action("turn right"), bg='#7289DA', borderwidth=3)
+        button_rotate_right.pack(side=tk.LEFT, padx=5)
+        key_label_rotate_right = tk.Label(rotation_frame, text="(X)", bg='#2C2F33', fg='white')
+        key_label_rotate_right.pack(side=tk.LEFT)
+
+        # Communication panel
+        comms_panel = tk.Frame(main_container, bg='#99AAB5', bd=2, relief=tk.RIDGE)
+        comms_panel.pack(side=tk.LEFT, fill=tk.BOTH, expand=True, padx=10)
 
         comms_label = tk.Label(comms_panel, text="Communication Panel", bg='#99AAB5', fg='black', font=("Arial", 10, "bold"))
         comms_label.pack(pady=(5, 10))
 
-        # Sección Environment
-        env_section = tk.LabelFrame(comms_panel, text="Environment", bg='#7289DA', fg='white', padx=10, pady=10)
-        env_section.pack(fill=tk.BOTH, padx=5, pady=5)
+        # Create a grid for communication buttons
+        comms_grid = tk.Frame(comms_panel, bg='#99AAB5')
+        comms_grid.pack(fill=tk.BOTH, expand=True, padx=5, pady=5)
 
-        tk.Button(env_section, image=self.informativo_img, 
-                 command=lambda: self.handle_comm_action("msg-environment-information"), 
-                 bg='white').pack(side=tk.LEFT, padx=10)
-        tk.Button(env_section, image=self.pregunta_img, 
-                 command=lambda: self.handle_comm_action("msg-environment-question"), 
-                 bg='white').pack(side=tk.LEFT, padx=10)
+        # Environment section
+        env_frame = tk.Frame(comms_grid, bg='#7289DA')
+        env_frame.pack(fill=tk.X, padx=5, pady=5)
+        env_label = tk.Label(env_frame, text="Environment", bg='#7289DA', fg='white', font=("Arial", 9, "bold"))
+        env_label.pack(pady=2)
 
-        # Sección Strategy
-        strat_section = tk.LabelFrame(comms_panel, text="Strategies Proposal", bg='#99AAB5', fg='black', padx=10, pady=10)
-        strat_section.pack(fill=tk.BOTH, padx=5, pady=5)
+        # Create two subpanels for environment buttons
+        env_left = tk.Frame(env_frame, bg='#7289DA')
+        env_left.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+        env_right = tk.Frame(env_frame, bg='#7289DA')
+        env_right.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
 
-        tk.Button(strat_section, image=self.strategy_individual_img, 
-                 command=lambda: self.handle_comm_action("msg-strategy-individual"), 
-                 bg='white').pack(side=tk.LEFT, padx=10)
-        tk.Button(strat_section, image=self.strategy_collective_img, 
-                 command=lambda: self.handle_comm_action("msg-strategy-collective"), 
-                 bg='white').pack(side=tk.LEFT, padx=10)
+        # Left environment button
+        info_btn = tk.Button(env_left, image=self.informativo_img, 
+                           command=lambda: self.handle_comm_action("msg-environment-information"), 
+                           bg='white')
+        info_btn.pack(pady=5)
+        tk.Label(env_left, text="(Q) - Information Message", bg='#7289DA', fg='white').pack()
 
-        # Sección Agreements
-        agree_section = tk.LabelFrame(comms_panel, text="Agreements Stablishment", bg='#2C2F33', fg='white', padx=10, pady=10)
-        agree_section.pack(fill=tk.BOTH, padx=5, pady=5)
+        # Right environment button
+        question_btn = tk.Button(env_right, image=self.pregunta_img, 
+                               command=lambda: self.handle_comm_action("msg-environment-question"), 
+                               bg='white')
+        question_btn.pack(pady=5)
+        tk.Label(env_right, text="(W) - Question Message", bg='#7289DA', fg='white').pack()
 
-        tk.Button(agree_section, image=self.agreement_request_img, 
-                 command=lambda: self.handle_comm_action("msg-agreement-request"), 
-                 bg='white').pack(side=tk.LEFT, padx=10)
-        tk.Button(agree_section, image=self.agreement_evaluation_img, 
-                 command=lambda: self.handle_comm_action("msg-agreement-evaluation"), 
-                 bg='white').pack(side=tk.LEFT, padx=10)
+        # Strategy section
+        strat_frame = tk.Frame(comms_grid, bg='#99AAB5')
+        strat_frame.pack(fill=tk.X, padx=5, pady=5)
+        strat_label = tk.Label(strat_frame, text="Strategy", bg='#99AAB5', fg='black', font=("Arial", 9, "bold"))
+        strat_label.pack(pady=2)
+
+        # Create two subpanels for strategy buttons
+        strat_left = tk.Frame(strat_frame, bg='#99AAB5')
+        strat_left.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+        strat_right = tk.Frame(strat_frame, bg='#99AAB5')
+        strat_right.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+
+        # Left strategy button
+        ind_btn = tk.Button(strat_left, image=self.strategy_individual_img, 
+                          command=lambda: self.handle_comm_action("msg-strategy-individual"), 
+                          bg='white')
+        ind_btn.pack(pady=5)
+        tk.Label(strat_left, text="(E) - Propose Individual Strategy", bg='#99AAB5', fg='black').pack()
+
+        # Right strategy button
+        col_btn = tk.Button(strat_right, image=self.strategy_collective_img, 
+                          command=lambda: self.handle_comm_action("msg-strategy-collective"), 
+                          bg='white')
+        col_btn.pack(pady=5)
+        tk.Label(strat_right, text="(R) - Propose Collective Strategy", bg='#99AAB5', fg='black').pack()
+
+        # Agreements section
+        agree_frame = tk.Frame(comms_grid, bg='#2C2F33')
+        agree_frame.pack(fill=tk.X, padx=5, pady=5)
+        agree_label = tk.Label(agree_frame, text="Agreements", bg='#2C2F33', fg='white', font=("Arial", 9, "bold"))
+        agree_label.pack(pady=2)
+
+        # Create two subpanels for agreement buttons
+        agree_left = tk.Frame(agree_frame, bg='#2C2F33')
+        agree_left.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+        agree_right = tk.Frame(agree_frame, bg='#2C2F33')
+        agree_right.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+
+        # Left agreement button
+        prop_btn = tk.Button(agree_left, image=self.agreement_request_img, 
+                           command=lambda: self.handle_comm_action("msg-agreement-request"), 
+                           bg='white')
+        prop_btn.pack(pady=5)
+        tk.Label(agree_left, text="(T) - Propose Agreement based on a strategy", bg='#2C2F33', fg='white').pack()
+
+        # Right agreement button
+        eval_btn = tk.Button(agree_right, image=self.agreement_evaluation_img, 
+                           command=lambda: self.handle_comm_action("msg-agreement-evaluation"), 
+                           bg='white')
+        eval_btn.pack(pady=5)
+        tk.Label(agree_right, text="(Y) - Evaluate and Discuss Agreement", bg='#2C2F33', fg='white').pack()
 
     def handle_comm_action(self, action):
         # Extract message kind from action (e.g., "msg-environment-information" -> "environment-information")
